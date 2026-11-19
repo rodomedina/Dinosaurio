@@ -1,0 +1,2053 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dino Realm 3D — Aventura Prehistórica</title>
+  <meta name="description" content="Juego de carreras 3D con dragón tierno, pterodáctilo volumétrico realista, fondo 2D pintado y clima nevado dinámico." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #060a12;
+      overflow: hidden;
+      font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+      user-select: none;
+      -webkit-font-smoothing: antialiased;
+    }
+    #game-container { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
+
+    /* 2D Painted Parallax Background Canvas */
+    #bg-canvas {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 1;
+      display: block;
+    }
+
+    /* 3D WebGL Canvas */
+    #c {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 2;
+      display: block;
+    }
+
+    /* Frost Vignette Overlay (intensifies as snow advances) */
+    #frost-overlay {
+      position: absolute; inset: 0; pointer-events: none; z-index: 5;
+      background: radial-gradient(ellipse at center, transparent 60%, rgba(186, 230, 253, 0.45) 100%);
+      opacity: 0;
+      transition: opacity 1.5s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: inset 0 0 100px rgba(125, 211, 252, 0.35);
+    }
+
+    /* Modern Glassmorphic HUD */
+    #hud {
+      position: absolute; top: 0; left: 0; right: 0;
+      display: flex; justify-content: space-between; align-items: flex-start;
+      padding: 20px 28px; pointer-events: none; z-index: 10;
+    }
+
+    .hud-pill {
+      background: rgba(15, 23, 42, 0.65);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 9999px;
+      padding: 10px 22px;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      display: flex; align-items: center; gap: 18px;
+      transition: border-color 0.8s ease, background 0.8s ease, box-shadow 0.8s ease;
+    }
+    .hud-pill.frozen {
+      border-color: rgba(186, 230, 253, 0.5);
+      background: rgba(12, 34, 60, 0.75);
+      box-shadow: 0 10px 35px rgba(56, 189, 248, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    }
+
+    .stat-group { display: flex; flex-direction: column; }
+    .stat-label {
+      font-size: 10px; font-weight: 700; letter-spacing: 1.5px;
+      text-transform: uppercase; color: #94a3b8; margin-bottom: 2px;
+    }
+    .stat-val {
+      font-family: 'Outfit', sans-serif;
+      font-size: 20px; font-weight: 800; letter-spacing: 0.5px;
+      color: #f8fafc; text-shadow: 0 2px 10px rgba(0,0,0,0.4);
+    }
+    #score-val { color: #34d399; }
+    #hi-val { color: #fbbf24; }
+
+    /* Biome Badge */
+    #biome-badge {
+      font-size: 12px; font-weight: 700; letter-spacing: 1.5px;
+      color: #38bdf8; text-transform: uppercase;
+      padding: 10px 24px; display: flex; align-items: center; gap: 10px;
+    }
+    #biome-icon { font-size: 16px; filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.6)); }
+
+    /* Lives & Speed */
+    #lives-wrap { display: flex; gap: 6px; align-items: center; }
+    .life-heart {
+      width: 20px; height: 20px;
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease, filter 0.3s ease;
+      filter: drop-shadow(0 2px 8px rgba(239, 68, 68, 0.5));
+    }
+    .life-heart.empty {
+      opacity: 0.2; transform: scale(0.8); filter: grayscale(1);
+    }
+
+    #speed-container {
+      display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
+    }
+    #speed-bar-track {
+      width: 110px; height: 6px;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 9999px; overflow: hidden;
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.5);
+    }
+    #speed-bar-fill {
+      height: 100%; width: 10%;
+      background: linear-gradient(90deg, #10b981, #f59e0b, #ef4444);
+      border-radius: 9999px;
+      transition: width 0.3s ease;
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+    }
+
+    /* Modern Glassmorphic Overlays */
+    .overlay {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; z-index: 20;
+      background: radial-gradient(circle at center, rgba(15, 23, 42, 0.8) 0%, rgba(8, 13, 22, 0.95) 100%);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .overlay.hidden { display: none; }
+
+    .hero-icon {
+      font-size: 80px; margin-bottom: 12px;
+      filter: drop-shadow(0 15px 35px rgba(52, 211, 153, 0.45));
+      animation: hero-float 3s ease-in-out infinite;
+    }
+    @keyframes hero-float {
+      0%, 100% { transform: translateY(0) rotate(0deg); }
+      50% { transform: translateY(-12px) rotate(3deg); }
+    }
+
+    .game-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: clamp(32px, 6vw, 64px);
+      font-weight: 800;
+      letter-spacing: -1px;
+      background: linear-gradient(135deg, #f8fafc 20%, #34d399 70%, #059669 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 6px;
+      text-align: center;
+      filter: drop-shadow(0 4px 20px rgba(52, 211, 153, 0.3));
+    }
+    .game-subtitle {
+      font-size: clamp(13px, 2.2vw, 17px);
+      font-weight: 600;
+      color: #94a3b8;
+      margin-bottom: 36px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    .modern-btn {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 9999px;
+      color: #ffffff;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      padding: 16px 44px;
+      cursor: pointer;
+      box-shadow: 0 10px 25px -5px rgba(16, 185, 129, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease, background 0.3s ease;
+      display: inline-flex; align-items: center; gap: 10px;
+    }
+    .modern-btn:hover {
+      transform: translateY(-3px) scale(1.02);
+      box-shadow: 0 15px 35px -5px rgba(16, 185, 129, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+      background: linear-gradient(135deg, #34d399 0%, #059669 100%);
+    }
+    .modern-btn:active {
+      transform: translateY(1px) scale(0.98);
+      box-shadow: 0 5px 15px -3px rgba(16, 185, 129, 0.5);
+    }
+
+    .controls-pill {
+      position: absolute; bottom: 28px; left: 50%; transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 9999px;
+      padding: 10px 26px;
+      color: #cbd5e1;
+      font-size: 12px; font-weight: 600;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+      display: flex; align-items: center; gap: 16px; white-space: nowrap;
+    }
+    .kbd-chip {
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 6px;
+      padding: 3px 8px;
+      color: #38bdf8;
+      font-size: 11px; font-weight: 700;
+    }
+
+    .overlay-score-box {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 20px;
+      padding: 20px 40px;
+      margin-bottom: 28px;
+      text-align: center;
+    }
+    .overlay-score-val {
+      font-family: 'Outfit', sans-serif;
+      font-size: clamp(36px, 6vw, 56px);
+      font-weight: 800;
+      color: #38bdf8;
+      line-height: 1.1;
+      margin-top: 4px;
+    }
+
+    #gameover-screen .game-title {
+      background: linear-gradient(135deg, #f8fafc 20%, #f43f5e 70%, #be123c 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 4px 20px rgba(244, 63, 94, 0.3));
+    }
+
+    #milestone-popup {
+      position: absolute; top: 28%; left: 50%; transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(56, 189, 248, 0.5);
+      border-radius: 9999px;
+      padding: 12px 30px;
+      color: #38bdf8; font-family: 'Outfit', sans-serif;
+      font-size: 16px; font-weight: 700;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 10px 40px rgba(56, 189, 248, 0.35);
+      z-index: 15; opacity: 0; pointer-events: none;
+      transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s ease;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+<div id="game-container">
+  <canvas id="bg-canvas"></canvas>
+  <canvas id="c"></canvas>
+  <div id="frost-overlay"></div>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div class="hud-pill" id="score-pill">
+      <div class="stat-group">
+        <span class="stat-label">Puntaje</span>
+        <span class="stat-val" id="score-val">00000</span>
+      </div>
+      <div style="width: 1px; height: 26px; background: rgba(255,255,255,0.15);"></div>
+      <div class="stat-group">
+        <span class="stat-label">Récord</span>
+        <span class="stat-val" id="hi-val">00000</span>
+      </div>
+    </div>
+
+    <!-- Center Biome Badge -->
+    <div class="hud-pill" id="biome-badge">
+      <span id="biome-icon">🌿</span>
+      <span id="biome-name">Selva Cálida</span>
+    </div>
+
+    <div class="hud-pill" id="status-pill">
+      <div id="lives-wrap">
+        <svg class="life-heart" id="h1" viewBox="0 0 24 24" fill="#ef4444"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+        <svg class="life-heart" id="h2" viewBox="0 0 24 24" fill="#ef4444"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+        <svg class="life-heart" id="h3" viewBox="0 0 24 24" fill="#ef4444"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+      </div>
+
+      <div style="width: 1px; height: 26px; background: rgba(255,255,255,0.15);"></div>
+
+      <div id="speed-container">
+        <span class="stat-label">Velocidad</span>
+        <div id="speed-bar-track">
+          <div id="speed-bar-fill"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="milestone-popup"></div>
+
+  <!-- Start Screen -->
+  <div class="overlay" id="start-screen">
+    <div class="hero-icon">🐉</div>
+    <div class="game-title">DINO REALM 3D</div>
+    <div class="game-subtitle">Aventura Prehistórica & Clima Glacial</div>
+    <button class="modern-btn" onclick="startGame()">
+      <span>Comenzar Aventura</span>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+    </button>
+    <div class="controls-pill">
+      <span><span class="kbd-chip">ESPACIO</span> o <span class="kbd-chip">↑</span> Saltar & Doble Salto</span>
+      <span style="opacity: 0.4;">|</span>
+      <span><span class="kbd-chip">↓</span> Agacharse (Esquiva el Pterodáctilo)</span>
+    </div>
+  </div>
+
+  <!-- Game Over Screen -->
+  <div class="overlay hidden" id="gameover-screen">
+    <div class="game-title">¡Fin del Recorrido!</div>
+    <div class="overlay-score-box">
+      <span class="stat-label">Puntaje Final</span>
+      <div class="overlay-score-val" id="final-score-display">00000</div>
+      <div id="final-hi-display" style="color: #fbbf24; font-size: 13px; font-weight: 700; margin-top: 8px;"></div>
+    </div>
+    <button class="modern-btn" onclick="restartGame()">
+      <span>Intentar de Nuevo</span>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+    </button>
+    <div class="controls-pill">
+      <span>Presiona <span class="kbd-chip">ESPACIO</span> para volver a jugar</span>
+    </div>
+  </div>
+</div>
+
+<!-- Local Three.js with CDN fallback -->
+<script src="three.min.js"></script>
+<script>
+  if (typeof THREE === 'undefined') {
+    document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"><\/script>');
+  }
+</script>
+
+<script>
+// ══════════════════════════════════════════════════════════════════════════
+//  DINO REALM 3D — MODELOS ORGÁNICOS SUAVES, HORIZONTAL Y SIN TRIÁNGULOS
+// ══════════════════════════════════════════════════════════════════════════
+
+// ─── AUDIO SYNTHESIZER ──────────────────────────────────────────────────
+const AudioFX = {
+  ctx: null,
+  init() {
+    try {
+      if (!this.ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) this.ctx = new AC();
+      }
+      if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+    } catch(e){}
+  },
+  jump() {
+    if (!this.ctx) return;
+    try {
+      const osc = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(290, this.ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(680, this.ctx.currentTime + 0.12);
+      g.gain.setValueAtTime(0.18, this.ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.14);
+      osc.connect(g); g.connect(this.ctx.destination);
+      osc.start(); osc.stop(this.ctx.currentTime + 0.15);
+    } catch(e){}
+  },
+  duck() {
+    if (!this.ctx) return;
+    try {
+      const osc = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(220, this.ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(110, this.ctx.currentTime + 0.09);
+      g.gain.setValueAtTime(0.14, this.ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.1);
+      osc.connect(g); g.connect(this.ctx.destination);
+      osc.start(); osc.stop(this.ctx.currentTime + 0.11);
+    } catch(e){}
+  },
+  hit() {
+    if (!this.ctx) return;
+    try {
+      const osc = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(140, this.ctx.currentTime);
+      osc.frequency.linearRampToValueAtTime(30, this.ctx.currentTime + 0.22);
+      g.gain.setValueAtTime(0.24, this.ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.25);
+      osc.connect(g); g.connect(this.ctx.destination);
+      osc.start(); osc.stop(this.ctx.currentTime + 0.26);
+    } catch(e){}
+  },
+  milestone() {
+    if (!this.ctx) return;
+    try {
+      [523.25, 659.25, 783.99, 1046.50].forEach((freq, idx) => {
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, this.ctx.currentTime + idx * 0.07);
+        g.gain.setValueAtTime(0.15, this.ctx.currentTime + idx * 0.07);
+        g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + idx * 0.07 + 0.16);
+        osc.connect(g); g.connect(this.ctx.destination);
+        osc.start(this.ctx.currentTime + idx * 0.07);
+        osc.stop(this.ctx.currentTime + idx * 0.07 + 0.18);
+      });
+    } catch(e){}
+  },
+  snowBell() {
+    if (!this.ctx) return;
+    try {
+      [880, 1174, 1318].forEach((freq, idx) => {
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, this.ctx.currentTime + idx * 0.1);
+        g.gain.setValueAtTime(0.12, this.ctx.currentTime + idx * 0.1);
+        g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + idx * 0.1 + 0.35);
+        osc.connect(g); g.connect(this.ctx.destination);
+        osc.start(this.ctx.currentTime + idx * 0.1);
+        osc.stop(this.ctx.currentTime + idx * 0.1 + 0.38);
+      });
+    } catch(e){}
+  }
+};
+
+// ─── LOCAL STORAGE SAFETIES ─────────────────────────────────────────────
+function getHiScore() {
+  try { return parseInt(localStorage.getItem('dino_realm_hi') || '0') || 0; } catch(e){ return 0; }
+}
+function saveHiScore(val) {
+  try { localStorage.setItem('dino_realm_hi', val); } catch(e){}
+}
+
+// ─── 2D PAINTED PARALLAX BACKGROUND (NO TRIANGLES, SMOOTH CURVED ART) ───
+const bgCanvas = document.getElementById('bg-canvas');
+const bgCtx = bgCanvas.getContext('2d');
+let bgWidth = 0, bgHeight = 0, bgScale = 1;
+
+// 2D Soaring Pterodactyls in background sky
+const bgPterodactyls = [
+  { x: 300, y: 110, sp: 0.85, size: 0.85, flap: 0 },
+  { x: 850, y: 75,  sp: 1.15, size: 0.65, flap: 1.4 },
+  { x: 1400, y: 150, sp: 0.95, size: 0.75, flap: 2.8 }
+];
+
+// 2D Ambient Spores / Snowflakes
+const bgSpores = [];
+for (let i = 0; i < 45; i++) {
+  bgSpores.push({
+    x: Math.random() * 1920,
+    y: Math.random() * 800,
+    vx: -0.4 - Math.random() * 0.8,
+    vy: (Math.random() - 0.5) * 0.3,
+    size: 1.5 + Math.random() * 2.5,
+  });
+}
+
+// 2D Stars
+const bgStars = [];
+for (let i = 0; i < 90; i++) {
+  bgStars.push({
+    x: Math.random(),
+    y: Math.random() * 0.55,
+    size: 0.8 + Math.random() * 2,
+    blinkPhase: Math.random() * Math.PI * 2
+  });
+}
+
+// ─── THREE.JS 3D SYSTEM SETUP (HORIZON-ALIGNED VIEW) ────────────────────
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setClearColor(0x000000, 0); // Transparent canvas reveals 2D background
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+const scene = new THREE.Scene();
+
+// Camera aligned horizontally with the track (NO DIAGONAL TILT!)
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 300);
+camera.position.set(2.0, 2.5, 9.8);
+camera.lookAt(2.0, 1.3, 0);
+
+function onResize() {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  bgScale = Math.min(window.devicePixelRatio, 2);
+  bgCanvas.width = w * bgScale;
+  bgCanvas.height = h * bgScale;
+  bgWidth = w;
+  bgHeight = h;
+
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', onResize);
+onResize();
+
+// ─── 3D LIGHTING ────────────────────────────────────────────────────────
+const ambLight = new THREE.AmbientLight(0xfff8ee, 0.95);
+scene.add(ambLight);
+
+const hemiLight = new THREE.HemisphereLight(0xbae6fd, 0x473322, 0.70);
+scene.add(hemiLight);
+
+const sunLight = new THREE.DirectionalLight(0xfff7ed, 1.4);
+sunLight.position.set(20, 32, 16);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.set(1024, 1024);
+sunLight.shadow.camera.left = -25;
+sunLight.shadow.camera.right = 35;
+sunLight.shadow.camera.top = 20;
+sunLight.shadow.camera.bottom = -10;
+sunLight.shadow.camera.far = 100;
+sunLight.shadow.bias = -0.001;
+scene.add(sunLight);
+
+// Cinematic Rim Light
+const rimLight = new THREE.DirectionalLight(0x7dd3fc, 0.90);
+rimLight.position.set(-20, 18, -15);
+scene.add(rimLight);
+
+// ─── PROCEDURAL TEXTURES (CUTE & ORGANIC) ────────────────────────────────
+function makeDragonSkinTex() {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 512;
+  const ctx = cv.getContext('2d');
+
+  // Rich lush emerald green base with soft radial glow
+  const grd = ctx.createRadialGradient(256, 256, 40, 256, 256, 360);
+  grd.addColorStop(0, '#22c55e');
+  grd.addColorStop(0.6, '#16a34a');
+  grd.addColorStop(1, '#15803d');
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, 512, 512);
+
+  // Soft organic dappled spots (cute friendly creature pattern)
+  ctx.fillStyle = 'rgba(21, 128, 61, 0.35)';
+  for (let i = 0; i < 40; i++) {
+    const rx = Math.random() * 512, ry = Math.random() * 512;
+    ctx.beginPath();
+    ctx.arc(rx, ry, 12 + Math.random() * 24, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Soft scales
+  for (let i = 0; i < 1500; i++) {
+    const sx = Math.random() * 512, sy = Math.random() * 512;
+    ctx.fillStyle = 'rgba(134, 239, 172, 0.18)';
+    ctx.beginPath(); ctx.arc(sx, sy, 2 + Math.random() * 3, 0, Math.PI * 2); ctx.fill();
+  }
+
+  const t = new THREE.CanvasTexture(cv);
+  t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
+function makeBellyTex() {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 256;
+  const ctx = cv.getContext('2d');
+  // Warm creamy pale-yellow belly
+  const grd = ctx.createLinearGradient(0, 0, 0, 256);
+  grd.addColorStop(0, '#fef9c3');
+  grd.addColorStop(0.5, '#fef08a');
+  grd.addColorStop(1, '#fde047');
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, 256, 256);
+
+  // Soft subtle rounded belly folds
+  for (let y = 0; y < 256; y += 40) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.quadraticCurveTo(128, y + 14, 256, y);
+    ctx.strokeStyle = 'rgba(217, 119, 6, 0.25)';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
+  return new THREE.CanvasTexture(cv);
+}
+
+function makeCuteBigEyeTex() {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 256;
+  const ctx = cv.getContext('2d');
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, 256, 256);
+
+  // Big sparkling dark emerald & golden iris
+  const grd = ctx.createRadialGradient(128, 128, 15, 128, 128, 105);
+  grd.addColorStop(0, '#fef08a');
+  grd.addColorStop(0.25, '#10b981');
+  grd.addColorStop(0.75, '#047857');
+  grd.addColorStop(1, '#064e3b');
+  ctx.fillStyle = grd;
+  ctx.beginPath(); ctx.arc(128, 128, 105, 0, Math.PI * 2); ctx.fill();
+
+  // Cute large friendly round pupil
+  ctx.fillStyle = '#09090b';
+  ctx.beginPath();
+  ctx.arc(128, 128, 62, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Giant sparkling reflection dots (Pixar/Toothless style cute eyes!)
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.arc(104, 98, 24, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(155, 150, 12, 0, Math.PI * 2); ctx.fill();
+  return new THREE.CanvasTexture(cv);
+}
+
+// Pterodactyl soft warm wing texture
+function makePteroWingTex() {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 512;
+  const ctx = cv.getContext('2d');
+  const grd = ctx.createLinearGradient(0, 0, 512, 512);
+  grd.addColorStop(0, '#c2410c');
+  grd.addColorStop(0.5, '#ea580c');
+  grd.addColorStop(1, '#9a3412');
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, 512, 512);
+
+  ctx.strokeStyle = 'rgba(254, 215, 170, 0.35)';
+  ctx.lineWidth = 2.5;
+  for (let i = 0; i < 20; i++) {
+    ctx.beginPath();
+    ctx.moveTo(0, i * 26);
+    ctx.bezierCurveTo(180, i * 24 + 30, 340, i * 26 - 15, 512, i * 26 + 10);
+    ctx.stroke();
+  }
+  const t = new THREE.CanvasTexture(cv);
+  t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
+// Dynamic Natural Track Texture
+const trackCanvas = document.createElement('canvas');
+trackCanvas.width = 512; trackCanvas.height = 256;
+const trackCtx = trackCanvas.getContext('2d');
+const trackTexture = new THREE.CanvasTexture(trackCanvas);
+trackTexture.wrapS = THREE.RepeatWrapping; trackTexture.wrapT = THREE.RepeatWrapping;
+trackTexture.repeat.set(6, 1);
+
+function updateTrackTexture(snowFactor) {
+  const ctx = trackCtx;
+  const earthGrd = ctx.createLinearGradient(0, 0, 0, 256);
+  earthGrd.addColorStop(0, '#2d6a2f');
+  earthGrd.addColorStop(0.2, '#604838');
+  earthGrd.addColorStop(0.5, '#785b46');
+  earthGrd.addColorStop(0.8, '#604838');
+  earthGrd.addColorStop(1, '#2d6a2f');
+  ctx.fillStyle = earthGrd;
+  ctx.fillRect(0, 0, 512, 256);
+
+  for (let i = 0; i < 250; i++) {
+    const px = Math.random() * 512, py = 40 + Math.random() * 176;
+    ctx.fillStyle = Math.random() > 0.5 ? 'rgba(40,25,15,0.2)' : 'rgba(180,150,110,0.2)';
+    ctx.beginPath(); ctx.arc(px, py, 1.5 + Math.random() * 3, 0, Math.PI * 2); ctx.fill();
+  }
+
+  if (snowFactor > 0.02) {
+    ctx.fillStyle = `rgba(240, 249, 255, ${Math.min(1, snowFactor * 1.35)})`;
+    ctx.fillRect(0, 0, 512, 256);
+
+    ctx.fillStyle = `rgba(186, 230, 253, ${snowFactor * 0.75})`;
+    for (let i = 0; i < 8; i++) {
+      ctx.beginPath();
+      ctx.ellipse(64 * i + 32, 128, 30, 50, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = `rgba(255, 255, 255, ${snowFactor * 0.95})`;
+    ctx.fillRect(0, 0, 512, 36);
+    ctx.fillRect(0, 220, 512, 36);
+  }
+  trackTexture.needsUpdate = true;
+}
+updateTrackTexture(0);
+
+// ─── MATERIALS ──────────────────────────────────────────────────────────
+const MATS = {
+  dragonSkin: new THREE.MeshPhongMaterial({
+    map: makeDragonSkinTex(),
+    color: 0x4ade80,
+    shininess: 45,
+    specular: 0xbbf7d0,
+  }),
+  dragonBelly: new THREE.MeshPhongMaterial({
+    map: makeBellyTex(),
+    shininess: 30,
+    specular: 0xfef08a,
+  }),
+  dragonHorns: new THREE.MeshPhongMaterial({
+    color: 0xfef08a,
+    shininess: 85,
+    specular: 0xffffff,
+  }),
+  dragonSpines: new THREE.MeshPhongMaterial({
+    color: 0x38bdf8,
+    emissive: 0x0284c7,
+    emissiveIntensity: 0.25,
+    shininess: 65,
+  }),
+  dragonEye: new THREE.MeshPhongMaterial({
+    map: makeCuteBigEyeTex(),
+    shininess: 150,
+    specular: 0xffffff,
+  }),
+  dragonEyelid: new THREE.MeshPhongMaterial({
+    color: 0x16a34a,
+    shininess: 25,
+  }),
+  dragonTeeth: new THREE.MeshPhongMaterial({
+    color: 0xffffff,
+    shininess: 60,
+  }),
+  dragonClaws: new THREE.MeshPhongMaterial({
+    color: 0x1e293b,
+    shininess: 70,
+  }),
+  dragonTongue: new THREE.MeshLambertMaterial({
+    color: 0xf43f5e,
+  }),
+  // Pterodactyl Volumetric Materials
+  pteroBody: new THREE.MeshPhongMaterial({
+    color: 0xc2410c,
+    shininess: 45,
+    specular: 0xf97316,
+  }),
+  pteroCrest: new THREE.MeshPhongMaterial({
+    color: 0xfbbf24,
+    emissive: 0xf59e0b,
+    emissiveIntensity: 0.35,
+    shininess: 70,
+  }),
+  pteroBeak: new THREE.MeshPhongMaterial({
+    color: 0xfef08a,
+    shininess: 55,
+  }),
+  pteroWing: new THREE.MeshPhongMaterial({
+    map: makePteroWingTex(),
+    shininess: 35,
+    specular: 0xfb923c,
+  }),
+  pteroBone: new THREE.MeshPhongMaterial({
+    color: 0x7c2d12,
+    shininess: 35,
+  }),
+  pteroEye: new THREE.MeshBasicMaterial({
+    color: 0xfde047,
+  }),
+  track: new THREE.MeshLambertMaterial({
+    map: trackTexture,
+  }),
+};
+
+// ─── HORIZONTAL LEVEL GROUND (NO WEIRD SLANTED RAMP!) ───────────────────
+const GROUND_Y = 0;
+const LANE_Z = 0;
+const groundGroup = new THREE.Group();
+
+// Clean horizontal ground plane directly at Y = 0
+const trackGeo = new THREE.PlaneGeometry(80, 5.5, 1, 1);
+trackGeo.rotateX(-Math.PI / 2);
+
+const track1 = new THREE.Mesh(trackGeo, MATS.track);
+track1.position.set(20, GROUND_Y, LANE_Z);
+track1.receiveShadow = true;
+groundGroup.add(track1);
+
+const track2 = new THREE.Mesh(trackGeo, MATS.track);
+track2.position.set(100, GROUND_Y, LANE_Z);
+track2.receiveShadow = true;
+groundGroup.add(track2);
+
+scene.add(groundGroup);
+
+// ─── 3D SNOW PARTICLE SYSTEM ────────────────────────────────────────────
+const SNOW_COUNT = 450;
+const snowGeo = new THREE.BufferGeometry();
+const snowPositions = new Float32Array(SNOW_COUNT * 3);
+const snowVelocities = [];
+
+for (let i = 0; i < SNOW_COUNT; i++) {
+  snowPositions[i * 3]     = (Math.random() - 0.25) * 60;
+  snowPositions[i * 3 + 1] = Math.random() * 22;
+  snowPositions[i * 3 + 2] = (Math.random() - 0.5) * 16;
+  snowVelocities.push({
+    vy: 0.05 + Math.random() * 0.07,
+    vx: -0.06 - Math.random() * 0.08,
+    sway: Math.random() * Math.PI * 2,
+    swaySpeed: 0.02 + Math.random() * 0.04
+  });
+}
+snowGeo.setAttribute('position', new THREE.BufferAttribute(snowPositions, 3));
+const snowMat = new THREE.PointsMaterial({
+  color: 0xf0fdfa,
+  size: 0.24,
+  transparent: true,
+  opacity: 0,
+});
+const snowPoints = new THREE.Points(snowGeo, snowMat);
+scene.add(snowPoints);
+
+// ─── THE DRAGON (ADORABLE, SMOOTH & ORGANIC — NO SHARP TRIANGLES) ───────
+const JUMP_FORCE = 0.285;
+const GRAVITY    = 0.010;
+
+const player = {
+  group: new THREE.Group(),
+  y: 0,
+  vy: 0,
+  isJumping: false,
+  jumpCount: 0,
+  isDucking: false,
+  invincible: false,
+  invincibleTimer: 0,
+
+  bodyGroup: null,
+  headGroup: null,
+  eyelidL: null, eyelidR: null,
+  jaw: null,
+  armL: null, armR: null,
+  hipL: null, kneeL: null, footL: null,
+  hipR: null, kneeR: null, footR: null,
+  tailSegments: [],
+
+  blinkTimer: 0,
+  isBlinking: false,
+  blinkProgress: 0,
+};
+
+(function buildAdorableSmoothDragon() {
+  const root = player.group;
+
+  // 1. CENTER OF MASS BODY GROUP
+  const bodyGroup = new THREE.Group();
+  bodyGroup.position.set(0, 1.10, 0);
+  root.add(bodyGroup);
+  player.bodyGroup = bodyGroup;
+
+  // Chubby cute body (Smooth 32-segment sphere)
+  const torsoGeo = new THREE.SphereGeometry(0.72, 32, 28);
+  torsoGeo.scale(1.30, 0.95, 0.82);
+  const torsoMesh = new THREE.Mesh(torsoGeo, MATS.dragonSkin);
+  torsoMesh.castShadow = true; torsoMesh.receiveShadow = true;
+  bodyGroup.add(torsoMesh);
+
+  // Soft Creamy Belly
+  const bellyGeo = new THREE.SphereGeometry(0.62, 28, 24);
+  bellyGeo.scale(1.18, 0.76, 0.84);
+  const bellyMesh = new THREE.Mesh(bellyGeo, MATS.dragonBelly);
+  bellyMesh.position.set(0.08, -0.20, 0);
+  bellyMesh.castShadow = true;
+  bodyGroup.add(bellyMesh);
+
+  // Soft Rounded Dorsal Plates (NO TRIANGLES: Smooth flattened spheres!)
+  for (let i = 0; i < 6; i++) {
+    const plateGeo = new THREE.SphereGeometry(0.16 - i * 0.015, 20, 16);
+    plateGeo.scale(0.35, 1.0, 0.22);
+    plateGeo.rotateZ(-0.35);
+    const plate = new THREE.Mesh(plateGeo, MATS.dragonSpines);
+    plate.position.set(-0.60 + i * 0.24, 0.60 - i * 0.02, 0);
+    plate.castShadow = true;
+    bodyGroup.add(plate);
+  }
+
+  // 2. NECK & HEAD
+  const neckGroup = new THREE.Group();
+  neckGroup.position.set(0.68, 0.24, 0);
+  neckGroup.rotation.z = 0.35;
+  bodyGroup.add(neckGroup);
+
+  const neckGeo = new THREE.CylinderGeometry(0.28, 0.38, 0.52, 28);
+  const neckMesh = new THREE.Mesh(neckGeo, MATS.dragonSkin);
+  neckMesh.position.set(0, 0.22, 0);
+  neckMesh.castShadow = true;
+  neckGroup.add(neckMesh);
+
+  const headGroup = new THREE.Group();
+  headGroup.position.set(0.05, 0.50, 0);
+  headGroup.rotation.z = -0.32;
+  neckGroup.add(headGroup);
+  player.headGroup = headGroup;
+
+  // Cute Rounded Dragon Skull with Chubby Cheeks
+  const skullGeo = new THREE.SphereGeometry(0.48, 32, 28);
+  skullGeo.scale(1.24, 0.96, 0.84);
+  const skullMesh = new THREE.Mesh(skullGeo, MATS.dragonSkin);
+  skullMesh.castShadow = true;
+  headGroup.add(skullMesh);
+
+  // Chubby cheeks
+  const cheekL = new THREE.Mesh(new THREE.SphereGeometry(0.24, 20, 18), MATS.dragonSkin);
+  cheekL.position.set(0.15, -0.08, 0.30);
+  headGroup.add(cheekL);
+
+  const cheekR = new THREE.Mesh(new THREE.SphereGeometry(0.24, 20, 18), MATS.dragonSkin);
+  cheekR.position.set(0.15, -0.08, -0.30);
+  headGroup.add(cheekR);
+
+  // Elegant Swept-Back Horns (Golden/Ivory, sweeping back smoothly over neck)
+  [-0.20, 0.20].forEach(hz => {
+    const hornGeo = new THREE.CylinderGeometry(0.02, 0.07, 0.65, 24);
+    hornGeo.rotateX(hz * 0.4);
+    hornGeo.rotateZ(-1.45); // sweeps backwards over skull!
+    const horn = new THREE.Mesh(hornGeo, MATS.dragonHorns);
+    horn.position.set(-0.35, 0.22, hz);
+    horn.castShadow = true;
+    headGroup.add(horn);
+
+    const hornTip = new THREE.Mesh(new THREE.SphereGeometry(0.025, 14, 14), MATS.dragonHorns);
+    hornTip.position.set(-0.66, 0.26, hz * 1.3);
+    headGroup.add(hornTip);
+  });
+
+  // Smooth Rounded Snout
+  const snoutGeo = new THREE.CylinderGeometry(0.22, 0.35, 0.62, 28);
+  snoutGeo.rotateZ(-Math.PI / 2);
+  const snoutMesh = new THREE.Mesh(snoutGeo, MATS.dragonSkin);
+  snoutMesh.position.set(0.46, -0.04, 0);
+  snoutMesh.castShadow = true;
+  headGroup.add(snoutMesh);
+
+  const noseTip = new THREE.Mesh(new THREE.SphereGeometry(0.22, 24, 20), MATS.dragonSkin);
+  noseTip.position.set(0.77, -0.04, 0);
+  noseTip.scale.set(0.9, 0.85, 0.85);
+  headGroup.add(noseTip);
+
+  // Nostrils
+  [-0.11, 0.11].forEach(nz => {
+    const nostril = new THREE.Mesh(new THREE.SphereGeometry(0.045, 14, 14), MATS.dragonSpines);
+    nostril.position.set(0.75, 0.08, nz);
+    headGroup.add(nostril);
+  });
+
+  // Lower Jaw & Pink Tongue
+  const jawGroup = new THREE.Group();
+  jawGroup.position.set(0.18, -0.22, 0);
+  headGroup.add(jawGroup);
+  player.jaw = jawGroup;
+
+  const jawGeo = new THREE.CylinderGeometry(0.16, 0.28, 0.58, 24);
+  jawGeo.rotateZ(-Math.PI / 2);
+  const jawMesh = new THREE.Mesh(jawGeo, MATS.dragonSkin);
+  jawMesh.position.set(0.24, 0, 0);
+  jawGroup.add(jawMesh);
+
+  const tongue = new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 14), MATS.dragonTongue);
+  tongue.scale.set(1.4, 0.4, 0.75);
+  tongue.position.set(0.24, 0.08, 0);
+  jawGroup.add(tongue);
+
+  // Smooth Little Teeth
+  for (let t = 0; t < 5; t++) {
+    const toothU = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.035, 0.09, 16), MATS.dragonTeeth);
+    toothU.position.set(0.32 + t * 0.08, -0.15, 0.20);
+    headGroup.add(toothU);
+
+    const toothU2 = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.035, 0.09, 16), MATS.dragonTeeth);
+    toothU2.position.set(0.32 + t * 0.08, -0.15, -0.20);
+    headGroup.add(toothU2);
+  }
+
+  // Giant Cute Sparkling Eyes (Toothless/Pixar style)
+  const eyeGeo = new THREE.SphereGeometry(0.19, 28, 24);
+  eyeGeo.rotateY(Math.PI / 2);
+
+  const eyeL = new THREE.Mesh(eyeGeo, MATS.dragonEye);
+  eyeL.position.set(0.18, 0.16, 0.34);
+  eyeL.rotation.y = 0.25;
+  headGroup.add(eyeL);
+
+  const eyeR = new THREE.Mesh(eyeGeo, MATS.dragonEye);
+  eyeR.position.set(0.18, 0.16, -0.34);
+  eyeR.rotation.y = -0.25;
+  headGroup.add(eyeR);
+
+  // Smooth Eyelids
+  const lidGeo = new THREE.SphereGeometry(0.20, 24, 20, 0, Math.PI * 2, 0, Math.PI / 2);
+  const eyelidL = new THREE.Mesh(lidGeo, MATS.dragonEyelid);
+  eyelidL.position.copy(eyeL.position); eyelidL.rotation.copy(eyeL.rotation);
+  eyelidL.scale.y = 0.001;
+  headGroup.add(eyelidL);
+  player.eyelidL = eyelidL;
+
+  const eyelidR = new THREE.Mesh(lidGeo, MATS.dragonEyelid);
+  eyelidR.position.copy(eyeR.position); eyelidR.rotation.copy(eyeR.rotation);
+  eyelidR.scale.y = 0.001;
+  headGroup.add(eyelidR);
+  player.eyelidR = eyelidR;
+
+  // 3. CUTE DRAGON ARMS
+  function createArm(zOffset, isLeft) {
+    const armGroup = new THREE.Group();
+    armGroup.position.set(0.52, -0.05, zOffset);
+
+    const upperGeo = new THREE.CylinderGeometry(0.07, 0.055, 0.26, 20);
+    const upperMesh = new THREE.Mesh(upperGeo, MATS.dragonSkin);
+    upperMesh.position.set(0, -0.11, 0);
+    upperMesh.castShadow = true;
+    armGroup.add(upperMesh);
+
+    const foreGroup = new THREE.Group();
+    foreGroup.position.set(0, -0.22, 0);
+    foreGroup.rotation.z = 0.8;
+    armGroup.add(foreGroup);
+
+    const foreGeo = new THREE.CylinderGeometry(0.055, 0.04, 0.20, 20);
+    const foreMesh = new THREE.Mesh(foreGeo, MATS.dragonSkin);
+    foreMesh.position.set(0, -0.09, 0);
+    foreMesh.castShadow = true;
+    foreGroup.add(foreMesh);
+
+    // Cute little rounded paws
+    const paw = new THREE.Mesh(new THREE.SphereGeometry(0.05, 14, 12), MATS.dragonSkin);
+    paw.position.set(0, -0.18, 0);
+    foreGroup.add(paw);
+
+    return armGroup;
+  }
+  player.armL = createArm(0.38, true);
+  player.armR = createArm(-0.38, false);
+
+  // 4. NATURAL CURVED TAIL WITH SPHERICAL JOINTS
+  const tailSegments = [];
+  let parentJoint = bodyGroup;
+  const tailDef = [
+    { len: 0.58, r1: 0.34, r2: 0.26, x: -0.65, y: 0.05 },
+    { len: 0.54, r1: 0.26, r2: 0.20, x: -0.52, y: -0.02 },
+    { len: 0.50, r1: 0.20, r2: 0.15, x: -0.48, y: 0.02 },
+    { len: 0.46, r1: 0.15, r2: 0.09, x: -0.44, y: 0.04 },
+    { len: 0.42, r1: 0.09, r2: 0.04, x: -0.40, y: 0.05 },
+  ];
+
+  tailDef.forEach((d, i) => {
+    const joint = new THREE.Group();
+    joint.position.set(d.x, d.y, 0);
+    parentJoint.add(joint);
+
+    const jointCap = new THREE.Mesh(new THREE.SphereGeometry(d.r1, 20, 16), MATS.dragonSkin);
+    joint.add(jointCap);
+
+    const segGeo = new THREE.CylinderGeometry(d.r2, d.r1, d.len, 24);
+    segGeo.rotateZ(Math.PI / 2);
+    const segMesh = new THREE.Mesh(segGeo, MATS.dragonSkin);
+    segMesh.position.set(-d.len * 0.5, 0, 0);
+    segMesh.castShadow = true;
+    joint.add(segMesh);
+
+    // Cute little fin on tail tip
+    if (i === tailDef.length - 1) {
+      const fin = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 14), MATS.dragonSpines);
+      fin.scale.set(1.4, 0.1, 0.7);
+      fin.position.set(-d.len, 0, 0);
+      joint.add(fin);
+    }
+
+    tailSegments.push(joint);
+    parentJoint = joint;
+  });
+  player.tailSegments = tailSegments;
+
+  // 5. CUTE DRAGON LEGS & PAWS
+  function createLeg(zOffset, isLeft) {
+    const hip = new THREE.Group();
+    hip.position.set(-0.05, 0.95, zOffset);
+    root.add(hip);
+
+    const thighGeo = new THREE.SphereGeometry(0.38, 24, 20);
+    thighGeo.scale(0.72, 1.15, 0.65);
+    const thighMesh = new THREE.Mesh(thighGeo, MATS.dragonSkin);
+    thighMesh.position.set(0.05, -0.22, 0);
+    thighMesh.castShadow = true;
+    hip.add(thighMesh);
+
+    const knee = new THREE.Group();
+    knee.position.set(0.12, -0.52, 0);
+    hip.add(knee);
+
+    const kneeCap = new THREE.Mesh(new THREE.SphereGeometry(0.13, 18, 16), MATS.dragonSkin);
+    knee.add(kneeCap);
+
+    const shinGeo = new THREE.CylinderGeometry(0.13, 0.09, 0.55, 24);
+    const shinMesh = new THREE.Mesh(shinGeo, MATS.dragonSkin);
+    shinMesh.position.set(0.02, -0.22, 0);
+    shinMesh.castShadow = true;
+    knee.add(shinMesh);
+
+    const foot = new THREE.Group();
+    foot.position.set(0.05, -0.48, 0);
+    knee.add(foot);
+
+    const footBase = new THREE.Mesh(new THREE.SphereGeometry(0.22, 20, 16), MATS.dragonSkin);
+    footBase.scale.set(1.4, 0.45, 0.85);
+    footBase.position.set(0.10, 0.04, 0);
+    footBase.castShadow = true;
+    foot.add(footBase);
+
+    [-0.10, 0, 0.10].forEach((tz, idx) => {
+      const toeLen = idx === 1 ? 0.28 : 0.24;
+      const toe = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.035, toeLen, 16), MATS.dragonSkin);
+      toe.rotation.z = Math.PI / 2;
+      toe.position.set(0.22 + toeLen * 0.4, 0.04, tz);
+      foot.add(toe);
+    });
+
+    return { hip, knee, foot };
+  }
+
+  const legL = createLeg(0.38, true);
+  player.hipL  = legL.hip;
+  player.kneeL = legL.knee;
+  player.footL = legL.foot;
+
+  const legR = createLeg(-0.38, false);
+  player.hipR  = legR.hip;
+  player.kneeR = legR.knee;
+  player.footR = legR.foot;
+
+  root.position.set(0, player.y, LANE_Z);
+  scene.add(root);
+})();
+
+// ─── 3D PTERODACTYL: VOLUMETRIC REALISTIC WINGS (NO FLAT CARDBOARD) ─────
+const obstacles = [];
+const POOL = [];
+
+function createVolumetricPterodactyl() {
+  const g = new THREE.Group();
+  g.userData = { type: 'pterodactyl', active: false, width: 1.5, height: 1.25, isFlying: true };
+
+  // Aerodynamic rounded body
+  const bodyGeo = new THREE.SphereGeometry(0.30, 28, 24);
+  bodyGeo.scale(1.45, 0.85, 0.85);
+  const body = new THREE.Mesh(bodyGeo, MATS.pteroBody);
+  body.castShadow = true;
+  g.add(body);
+
+  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.22, 20, 18), MATS.pteroBody);
+  chest.scale.set(1.1, 0.85, 0.8);
+  chest.position.set(0.15, -0.1, 0);
+  g.add(chest);
+
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.18, 0.50, 24), MATS.pteroBody);
+  neck.position.set(0.52, 0.14, 0);
+  neck.rotation.z = -0.55;
+  g.add(neck);
+
+  const headGroup = new THREE.Group();
+  headGroup.position.set(0.80, 0.32, 0);
+  g.add(headGroup);
+
+  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.20, 24, 20), MATS.pteroBody);
+  skull.scale.set(1.2, 0.85, 0.8);
+  headGroup.add(skull);
+
+  // Aerodynamic swept-back crest
+  const crestGeo = new THREE.CylinderGeometry(0.04, 0.15, 0.90, 24);
+  crestGeo.rotateZ(-2.2);
+  const crest = new THREE.Mesh(crestGeo, MATS.pteroCrest);
+  crest.position.set(-0.35, 0.25, 0);
+  crest.castShadow = true;
+  headGroup.add(crest);
+
+  const crestTip = new THREE.Mesh(new THREE.SphereGeometry(0.045, 16, 16), MATS.pteroCrest);
+  crestTip.position.set(-0.74, 0.42, 0);
+  headGroup.add(crestTip);
+
+  // Slender curved beak
+  const beakGeo = new THREE.CylinderGeometry(0.02, 0.13, 0.85, 24);
+  beakGeo.rotateZ(-Math.PI / 2);
+  const beak = new THREE.Mesh(beakGeo, MATS.pteroBeak);
+  beak.position.set(0.50, -0.04, 0);
+  beak.castShadow = true;
+  headGroup.add(beak);
+
+  [-0.13, 0.13].forEach(ez => {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.065, 16, 16), MATS.pteroEye);
+    eye.position.set(0.12, 0.08, ez);
+    headGroup.add(eye);
+  });
+
+  // VOLUMETRIC WINGS (3D THICKNESS: NEVER LOOKS LIKE FLAT CARDBOARD!)
+  function createVolumetricWing(isLeft) {
+    const zDir = isLeft ? 1 : -1;
+    const shoulder = new THREE.Group();
+    shoulder.position.set(0.1, 0.08, 0.22 * zDir);
+    g.add(shoulder);
+
+    const sJoint = new THREE.Mesh(new THREE.SphereGeometry(0.10, 18, 16), MATS.pteroBone);
+    shoulder.add(sJoint);
+
+    const armGeo = new THREE.CylinderGeometry(0.08, 0.06, 0.85, 20);
+    armGeo.rotateX(Math.PI / 2);
+    const armMesh = new THREE.Mesh(armGeo, MATS.pteroBone);
+    armMesh.position.set(0, 0, 0.42 * zDir);
+    armMesh.castShadow = true;
+    shoulder.add(armMesh);
+
+    // Inner Volumetric Airfoil (0.08 units thickness)
+    const innerMemGeo = new THREE.CylinderGeometry(0.46, 0.34, 0.85, 24);
+    innerMemGeo.scale(1, 0.08, 1);
+    const innerMem = new THREE.Mesh(innerMemGeo, MATS.pteroWing);
+    innerMem.position.set(-0.35, 0, 0.42 * zDir);
+    innerMem.castShadow = true;
+    shoulder.add(innerMem);
+
+    const elbow = new THREE.Group();
+    elbow.position.set(0, 0, 0.85 * zDir);
+    shoulder.add(elbow);
+
+    const eJoint = new THREE.Mesh(new THREE.SphereGeometry(0.08, 18, 16), MATS.pteroBone);
+    elbow.add(eJoint);
+
+    const fingerGeo = new THREE.CylinderGeometry(0.06, 0.025, 1.3, 20);
+    fingerGeo.rotateX(Math.PI / 2);
+    const fingerMesh = new THREE.Mesh(fingerGeo, MATS.pteroBone);
+    fingerMesh.position.set(0, 0, 0.65 * zDir);
+    fingerMesh.castShadow = true;
+    elbow.add(fingerMesh);
+
+    // Outer Volumetric Airfoil (0.07 units thickness)
+    const outerMemGeo = new THREE.CylinderGeometry(0.34, 0.12, 1.3, 24);
+    outerMemGeo.scale(1, 0.07, 1);
+    const outerMem = new THREE.Mesh(outerMemGeo, MATS.pteroWing);
+    outerMem.position.set(-0.30, 0, 0.65 * zDir);
+    outerMem.castShadow = true;
+    elbow.add(outerMem);
+
+    return { shoulder, elbow, innerMem, outerMem };
+  }
+
+  g.userData.wingL = createVolumetricWing(true);
+  g.userData.wingR = createVolumetricWing(false);
+
+  const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.08, 0.70, 16), MATS.pteroBody);
+  tail.rotation.z = Math.PI / 2;
+  tail.position.set(-0.65, 0, 0);
+  g.add(tail);
+
+  const vane = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 14), MATS.pteroCrest);
+  vane.scale.set(1.4, 0.12, 0.7);
+  vane.position.set(-1.0, 0, 0);
+  g.add(vane);
+
+  g.visible = false;
+  scene.add(g);
+  return g;
+}
+
+function createObsMesh(type) {
+  if (type === 'pterodactyl') return createVolumetricPterodactyl();
+
+  const g = new THREE.Group();
+  g.userData = { type, active: false, width: 1.1, height: 1.8, isFlying: false };
+
+  if (type === 'cactus') {
+    // Prehistoric Cycad / Palm
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.36, 1.8, 24), new THREE.MeshLambertMaterial({color: 0x1e3a1e}));
+    trunk.position.set(0, 0.9, 0); trunk.castShadow = true; g.add(trunk);
+
+    for (let f = 0; f < 8; f++) {
+      const angle = (f / 8) * Math.PI * 2;
+      const frond = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.12, 1.2, 16), new THREE.MeshLambertMaterial({color: 0x166534}));
+      frond.position.set(Math.cos(angle) * 0.4, 1.6, Math.sin(angle) * 0.4);
+      frond.rotation.z = Math.cos(angle) * 0.65;
+      frond.rotation.x = Math.sin(angle) * 0.65;
+      g.add(frond);
+    }
+
+    const snowCap = new THREE.Mesh(new THREE.SphereGeometry(0.32, 20, 16), new THREE.MeshLambertMaterial({color: 0xf8fafc}));
+    snowCap.scale.set(1.2, 0.4, 1.2);
+    snowCap.position.set(0, 1.85, 0);
+    g.add(snowCap);
+    g.userData.snowCap = snowCap;
+
+    const flower = new THREE.Mesh(new THREE.SphereGeometry(0.18, 18, 16), new THREE.MeshLambertMaterial({color: 0xf43f5e}));
+    flower.position.set(0, 1.95, 0); g.add(flower);
+    g.userData.width = 1.1; g.userData.height = 2.1;
+  }
+  else if (type === 'boulder') {
+    // Smoothed Organic Boulder
+    const rockGeo = new THREE.IcosahedronGeometry(0.85, 3);
+    const rock = new THREE.Mesh(rockGeo, new THREE.MeshLambertMaterial({color: 0x334155}));
+    rock.scale.set(1.15, 0.88, 0.85);
+    rock.position.set(0, 0.75, 0); rock.castShadow = true; g.add(rock);
+
+    const crystal = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.7, 16), new THREE.MeshLambertMaterial({color: 0xf59e0b, emissive: 0xb45309}));
+    crystal.position.set(0.15, 1.3, 0.1); crystal.rotation.z = 0.2; g.add(crystal);
+    g.userData.crystal = crystal;
+
+    const snowTop = new THREE.Mesh(new THREE.SphereGeometry(0.55, 20, 16), new THREE.MeshLambertMaterial({color: 0xf0fdfa}));
+    snowTop.scale.set(1.2, 0.35, 0.9);
+    snowTop.position.set(0, 1.35, 0);
+    g.add(snowTop);
+    g.userData.snowTop = snowTop;
+
+    g.userData.width = 1.2; g.userData.height = 1.8;
+  }
+  else if (type === 'egg_nest') {
+    const nest = new THREE.Mesh(new THREE.TorusGeometry(0.7, 0.25, 16, 32), new THREE.MeshLambertMaterial({color: 0x451a03}));
+    nest.rotation.x = Math.PI / 2;
+    nest.position.set(0, 0.2, 0);
+    g.add(nest);
+
+    [[-0.22, 0.1], [0.22, 0.1], [0, -0.15]].forEach(([ex, ez]) => {
+      const egg = new THREE.Mesh(new THREE.SphereGeometry(0.24, 20, 18), new THREE.MeshLambertMaterial({color: 0xfef08a}));
+      egg.scale.set(0.8, 1.25, 0.8);
+      egg.position.set(ex, 0.42, ez);
+      egg.rotation.z = (Math.random() - 0.5) * 0.4;
+      g.add(egg);
+    });
+    g.userData.width = 1.2; g.userData.height = 1.6;
+  }
+
+  g.visible = false;
+  scene.add(g);
+  return g;
+}
+
+['cactus', 'boulder', 'pterodactyl', 'egg_nest'].forEach(t => {
+  for (let i = 0; i < 4; i++) POOL.push(createObsMesh(t));
+});
+
+// ─── 3D PARTICLES ───────────────────────────────────────────────────────
+const particles = [];
+function spawnParticles(pos, color, count = 10, isVapor = false) {
+  for (let i = 0; i < count; i++) {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(isVapor ? 0.18 : 0.12, 12, 12), new THREE.MeshLambertMaterial({color}));
+    m.position.copy(pos);
+    const a = Math.random() * Math.PI * 2, sp = isVapor ? (0.02 + Math.random() * 0.05) : (0.04 + Math.random() * 0.16);
+    m.userData = {
+      vx: isVapor ? (-0.08 - Math.random() * 0.08) : (Math.cos(a) * sp),
+      vy: isVapor ? (0.04 + Math.random() * 0.05) : (0.08 + Math.random() * 0.2),
+      vz: Math.sin(a) * sp * 0.5,
+      life: 0,
+      maxLife: isVapor ? (35 + Math.random() * 25) : (25 + Math.random() * 30),
+      isVapor
+    };
+    scene.add(m); particles.push(m);
+  }
+}
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i], d = p.userData;
+    d.life++;
+    p.position.x += d.vx; p.position.y += d.vy; p.position.z += d.vz;
+    if (!d.isVapor) d.vy -= 0.008;
+    else p.scale.multiplyScalar(1.02);
+    p.material.opacity = 1 - d.life / d.maxLife; p.material.transparent = true;
+    if (d.life >= d.maxLife) { scene.remove(p); particles.splice(i, 1); }
+  }
+}
+
+// ─── GAME STATE ─────────────────────────────────────────────────────────
+const state = {
+  running: false,
+  score: 0,
+  hiScore: getHiScore(),
+  lives: 3,
+  speed: 0.13,
+  speedMax: 0.46,
+  speedIncrement: 0.000035,
+  time: 0,
+  nextObstacle: 85,
+  dayTime: 0.75,
+  milestones: [100, 300, 600, 1000, 2000, 5000],
+  snowEntered: false,
+};
+
+// ─── 2D PAINTED PARALLAX BACKGROUND (BEAUTIFUL CURVES, ZERO TRIANGLES) ──
+function draw2DBackground(t, speed, snowFactor) {
+  const ctx = bgCtx;
+  const w = bgWidth;
+  const h = bgHeight;
+  ctx.save();
+  ctx.scale(bgScale, bgScale);
+
+  const dtFactor = (Math.sin(state.dayTime) + 1) / 2;
+
+  // 1. SKY GRADIENT
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, h * 0.75);
+  if (dtFactor > 0.45) {
+    if (snowFactor > 0.3) {
+      skyGrad.addColorStop(0, '#0284c7');
+      skyGrad.addColorStop(0.5, '#38bdf8');
+      skyGrad.addColorStop(1, '#e0f2fe');
+    } else {
+      skyGrad.addColorStop(0, '#0369a1');
+      skyGrad.addColorStop(0.5, '#38bdf8');
+      skyGrad.addColorStop(1, '#bae6fd');
+    }
+  } else if (dtFactor > 0.15) {
+    if (snowFactor > 0.3) {
+      skyGrad.addColorStop(0, '#1e1b4b');
+      skyGrad.addColorStop(0.5, '#4c1d95');
+      skyGrad.addColorStop(1, '#c084fc');
+    } else {
+      skyGrad.addColorStop(0, '#1e1b4b');
+      skyGrad.addColorStop(0.35, '#831843');
+      skyGrad.addColorStop(0.7, '#f43f5e');
+      skyGrad.addColorStop(1, '#fde047');
+    }
+  } else {
+    skyGrad.addColorStop(0, '#030712');
+    skyGrad.addColorStop(0.5, '#0f172a');
+    skyGrad.addColorStop(1, snowFactor > 0.3 ? '#0e3a40' : '#1e293b');
+  }
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(0, 0, w, h);
+
+  // 2. AURORA BOREALIS
+  if (dtFactor < 0.35 && snowFactor > 0.25) {
+    ctx.save();
+    const auroraAlpha = (1 - dtFactor / 0.35) * snowFactor * 0.65;
+    ctx.globalAlpha = auroraAlpha;
+    const aurGrad = ctx.createLinearGradient(0, h * 0.05, 0, h * 0.45);
+    aurGrad.addColorStop(0, 'rgba(52, 211, 153, 0.8)');
+    aurGrad.addColorStop(0.5, 'rgba(56, 189, 248, 0.6)');
+    aurGrad.addColorStop(1, 'rgba(168, 85, 247, 0)');
+    ctx.fillStyle = aurGrad;
+    ctx.beginPath();
+    ctx.moveTo(0, h * 0.15);
+    for (let x = 0; x <= w; x += 50) {
+      const ay = h * 0.18 + Math.sin(t * 0.03 + x * 0.005) * 45;
+      ctx.lineTo(x, ay);
+    }
+    ctx.lineTo(w, h * 0.45); ctx.lineTo(0, h * 0.45);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // 3. STARS AT NIGHT
+  if (dtFactor < 0.35) {
+    const starAlpha = (0.35 - dtFactor) / 0.35;
+    ctx.fillStyle = '#ffffff';
+    bgStars.forEach(st => {
+      const tw = Math.sin(t * 0.05 + st.blinkPhase) * 0.5 + 0.5;
+      ctx.globalAlpha = starAlpha * (0.3 + tw * 0.7);
+      ctx.beginPath();
+      ctx.arc(st.x * w, st.y * h, st.size, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  // 4. SUN & MOON
+  const sunX = w * 0.75 + Math.cos(state.dayTime * 0.7) * (w * 0.25);
+  const sunY = h * 0.28 + Math.sin(state.dayTime * 0.7) * (h * 0.16);
+
+  if (dtFactor > 0.18) {
+    const sunGrad = ctx.createRadialGradient(sunX, sunY, 12, sunX, sunY, 80);
+    sunGrad.addColorStop(0, '#ffffff');
+    sunGrad.addColorStop(0.4, snowFactor > 0.4 ? 'rgba(224, 242, 254, 0.8)' : 'rgba(254, 240, 138, 0.8)');
+    sunGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = sunGrad;
+    ctx.beginPath(); ctx.arc(sunX, sunY, 80, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(sunX, sunY, 28, 0, Math.PI * 2); ctx.fill();
+  } else {
+    const moonX = w * 0.8;
+    const moonY = h * 0.22;
+    ctx.fillStyle = '#f8fafc';
+    ctx.beginPath(); ctx.arc(moonX, moonY, 24, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#0f172a';
+    ctx.beginPath(); ctx.arc(moonX - 9, moonY - 6, 21, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // 5. BACKGROUND PTERODACTYLS
+  ctx.fillStyle = dtFactor > 0.3 ? 'rgba(30, 41, 59, 0.45)' : 'rgba(15, 23, 42, 0.75)';
+  bgPterodactyls.forEach(pt => {
+    pt.x -= pt.sp * (1 + speed * 2);
+    if (pt.x < -80) pt.x = w + 80;
+    pt.flap += 0.14;
+    const wingY = Math.sin(pt.flap) * 12 * pt.size;
+
+    ctx.save();
+    ctx.translate(pt.x, pt.y);
+    ctx.scale(pt.size, pt.size);
+    ctx.beginPath();
+    ctx.moveTo(18, 0); ctx.lineTo(-12, -4); ctx.lineTo(-24, 0); ctx.lineTo(-12, 4); ctx.closePath();
+    ctx.moveTo(2, 0); ctx.lineTo(-8, -26 + wingY); ctx.lineTo(-18, -4);
+    ctx.moveTo(2, 0); ctx.lineTo(-8, 26 - wingY); ctx.lineTo(-18, 4);
+    ctx.fill();
+    ctx.restore();
+  });
+
+  // 6. LAYER 1: Distant Painted Alpine Mountain Ridge (SMOOTH ROLLING PEAKS)
+  const layer1Off = (t * speed * 8) % w;
+  const volGrad = ctx.createLinearGradient(0, h * 0.35, 0, h * 0.75);
+  if (snowFactor > 0.3) {
+    volGrad.addColorStop(0, '#64748b');
+    volGrad.addColorStop(1, '#cbd5e1');
+  } else {
+    volGrad.addColorStop(0, dtFactor > 0.3 ? '#334155' : '#0f172a');
+    volGrad.addColorStop(1, dtFactor > 0.3 ? '#64748b' : '#1e293b');
+  }
+  ctx.fillStyle = volGrad;
+
+  [-layer1Off, w - layer1Off].forEach(baseX => {
+    ctx.beginPath();
+    ctx.moveTo(baseX, h * 0.70);
+    // Smooth Bezier curved mountain slopes (NO SHARP TRIANGLES!)
+    ctx.quadraticCurveTo(baseX + w * 0.12, h * 0.38, baseX + w * 0.24, h * 0.45);
+    ctx.quadraticCurveTo(baseX + w * 0.36, h * 0.52, baseX + w * 0.50, h * 0.35);
+    ctx.quadraticCurveTo(baseX + w * 0.65, h * 0.40, baseX + w * 0.80, h * 0.55);
+    ctx.quadraticCurveTo(baseX + w * 0.90, h * 0.42, baseX + w, h * 0.70);
+    ctx.lineTo(baseX + w, h);
+    ctx.lineTo(baseX, h);
+    ctx.closePath();
+    ctx.fill();
+
+    // Soft snow caps on peaks
+    if (snowFactor > 0.15) {
+      ctx.fillStyle = `rgba(255, 255, 255, ${snowFactor})`;
+      ctx.beginPath();
+      ctx.moveTo(baseX + w * 0.08, h * 0.48);
+      ctx.quadraticCurveTo(baseX + w * 0.12, h * 0.38, baseX + w * 0.18, h * 0.44);
+      ctx.quadraticCurveTo(baseX + w * 0.13, h * 0.49, baseX + w * 0.08, h * 0.48);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(baseX + w * 0.44, h * 0.44);
+      ctx.quadraticCurveTo(baseX + w * 0.50, h * 0.35, baseX + w * 0.56, h * 0.42);
+      ctx.quadraticCurveTo(baseX + w * 0.50, h * 0.46, baseX + w * 0.44, h * 0.44);
+      ctx.fill();
+      ctx.fillStyle = volGrad;
+    }
+  });
+
+  // 7. LAYER 2: Rolling Pine Ridges (SMOOTH CURVES, NO SAW-TEETH!)
+  const layer2Off = (t * speed * 22) % w;
+  const ridgeGrad = ctx.createLinearGradient(0, h * 0.48, 0, h * 0.82);
+  if (snowFactor > 0.4) {
+    ridgeGrad.addColorStop(0, '#1e293b');
+    ridgeGrad.addColorStop(1, '#475569');
+  } else {
+    ridgeGrad.addColorStop(0, dtFactor > 0.3 ? '#166534' : '#064e3b');
+    ridgeGrad.addColorStop(1, dtFactor > 0.3 ? '#15803d' : '#022c22');
+  }
+  ctx.fillStyle = ridgeGrad;
+
+  [-layer2Off, w - layer2Off].forEach(baseX => {
+    ctx.beginPath();
+    ctx.moveTo(baseX, h * 0.72);
+    // Smooth sinusoidal rolling hills
+    for (let seg = 0; seg <= 20; seg++) {
+      const rx = baseX + (seg / 20) * w;
+      const ry = h * 0.55 + Math.sin(seg * 0.9) * 28;
+      if (seg === 0) ctx.moveTo(rx, ry);
+      else ctx.quadraticCurveTo(rx - w * 0.025, ry - 6, rx, ry);
+    }
+    ctx.lineTo(baseX + w, h); ctx.lineTo(baseX, h); ctx.closePath();
+    ctx.fill();
+
+    if (snowFactor > 0.25) {
+      ctx.strokeStyle = `rgba(240, 248, 255, ${snowFactor * 0.85})`;
+      ctx.lineWidth = 5 * snowFactor;
+      ctx.beginPath();
+      for (let seg = 0; seg <= 20; seg++) {
+        const rx = baseX + (seg / 20) * w;
+        const ry = h * 0.55 + Math.sin(seg * 0.9) * 28;
+        if (seg === 0) ctx.moveTo(rx, ry);
+        else ctx.quadraticCurveTo(rx - w * 0.025, ry - 6, rx, ry);
+      }
+      ctx.stroke();
+    }
+  });
+
+  // 8. LAYER 3: Soft Foreground Rolling Canopy (REPLACED THE SAW-TOOTH TRIANGLES!)
+  const layer3Off = (t * speed * 55) % w;
+  ctx.fillStyle = snowFactor > 0.4 ? '#0f172a' : (dtFactor > 0.3 ? '#14532d' : '#022c22');
+
+  [-layer3Off, w - layer3Off].forEach(baseX => {
+    ctx.beginPath();
+    ctx.moveTo(baseX, h * 0.80);
+    // Soft rounded organic canopy clusters (NO TRIANGLE SPIKES!)
+    for (let c = 0; c < 12; c++) {
+      const cx = baseX + (c / 12) * w + w * 0.04;
+      const cy = h * 0.68 + Math.sin(c * 1.5) * 14;
+      ctx.quadraticCurveTo(cx - w * 0.02, cy - 18, cx, cy);
+    }
+    ctx.lineTo(baseX + w, h); ctx.lineTo(baseX, h); ctx.closePath();
+    ctx.fill();
+  });
+
+  // 9. SOFT FALLING SNOWFLAKES (in 2D)
+  if (snowFactor > 0.05) {
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+    bgSpores.forEach(sp => {
+      sp.x += sp.vx * (1 + speed * 1.5);
+      sp.y += (0.6 + snowFactor * 1.2);
+      if (sp.x < -10) sp.x = w + 10;
+      if (sp.y > h * 0.85) sp.y = 0;
+      ctx.beginPath();
+      ctx.arc(sp.x, sp.y, sp.size * (0.8 + snowFactor * 0.8), 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+  ctx.restore();
+}
+
+// ─── INPUT HANDLING ─────────────────────────────────────────────────────
+const keys = {};
+document.addEventListener('keydown', e => {
+  if (keys[e.code]) return;
+  keys[e.code] = true;
+
+  if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'Enter') {
+    e.preventDefault();
+    if (!state.running) {
+      const startScreen = document.getElementById('start-screen');
+      if (startScreen && !startScreen.classList.contains('hidden')) {
+        startGame(); return;
+      }
+      const goScreen = document.getElementById('gameover-screen');
+      if (goScreen && !goScreen.classList.contains('hidden')) {
+        restartGame(); return;
+      }
+      return;
+    }
+    jump();
+  }
+  if (e.code === 'ArrowDown') {
+    e.preventDefault();
+    duck(true);
+  }
+});
+
+document.addEventListener('keyup', e => {
+  keys[e.code] = false;
+  if (e.code === 'ArrowDown') duck(false);
+});
+
+// Mobile / Touch controls
+let touchSY = 0;
+canvas.addEventListener('touchstart', e => {
+  touchSY = e.touches[0].clientY;
+  if (!state.running) { startGame(); return; }
+  jump();
+}, { passive: true });
+
+canvas.addEventListener('touchend', e => {
+  if ((touchSY - e.changedTouches[0].clientY) < -30) duck(true);
+  else duck(false);
+}, { passive: true });
+
+// ─── JUMP / DUCK ACTIONS ────────────────────────────────────────────────
+function jump() {
+  AudioFX.init();
+  if (player.isDucking) {
+    duck(false);
+    return;
+  }
+  if (player.jumpCount < 2) {
+    player.vy = JUMP_FORCE;
+    player.isJumping = true;
+    player.jumpCount++;
+    AudioFX.jump();
+    spawnParticles(new THREE.Vector3(0, player.y, LANE_Z), 0x34d399, 8);
+  }
+}
+
+function duck(on) {
+  AudioFX.init();
+  if (on && !player.isDucking) AudioFX.duck();
+  player.isDucking = on;
+
+  if (on) {
+    player.bodyGroup.position.y = 0.55;
+    player.bodyGroup.rotation.z = 0.35;
+    player.headGroup.rotation.z = -0.55;
+  } else {
+    player.bodyGroup.position.y = 1.10;
+    player.bodyGroup.rotation.z = 0;
+    player.headGroup.rotation.z = -0.32;
+  }
+}
+
+// ─── OBSTACLE SPAWNER ───────────────────────────────────────────────────
+function spawnObstacle() {
+  const types = state.score < 200 ? ['cactus', 'boulder'] :
+                state.score < 450 ? ['cactus', 'boulder', 'pterodactyl'] :
+                ['cactus', 'boulder', 'pterodactyl', 'egg_nest'];
+  const type = types[~~(Math.random() * types.length)];
+  let obs = POOL.find(o => !o.userData.active && o.userData.type === type);
+  if (!obs) { obs = createObsMesh(type); POOL.push(obs); }
+  obs.visible = true;
+  obs.userData.active = true;
+
+  const fly = obs.userData.isFlying ? 1.75 + Math.random() * 0.75 : 0;
+  obs.position.set(36, fly, LANE_Z);
+  obs.userData.flyHeight = fly;
+  obstacles.push(obs);
+}
+
+// ─── COLLISION DETECTION ────────────────────────────────────────────────
+function checkCollision() {
+  if (player.invincible) return;
+
+  const feet = player.y;
+  const head = player.isDucking ? player.y + 1.15 : player.y + 2.2;
+  const pHalf = 0.36;
+
+  for (const obs of obstacles) {
+    if (!obs.userData.active) continue;
+    const ox = obs.position.x;
+    const obsBot = obs.position.y;
+    const obsTop = obs.position.y + obs.userData.height;
+    const obsHalf = obs.userData.width * 0.5 * 0.75;
+
+    if (Math.abs(ox) < (pHalf + obsHalf) && feet < obsTop && head > obsBot) {
+      hitPlayer();
+      return;
+    }
+  }
+}
+
+function hitPlayer() {
+  AudioFX.hit();
+  state.lives--;
+  player.invincible = true;
+  player.invincibleTimer = 110;
+  updateLivesUI();
+  spawnParticles(new THREE.Vector3(0, player.y + 1, LANE_Z), 0xf43f5e, 16);
+
+  if (state.lives <= 0) gameOver();
+}
+
+// ─── MODERN UI UPDATES ──────────────────────────────────────────────────
+function pad(n, l = 5) { return String(~~n).padStart(l, '0'); }
+function updateScoreUI(snowFactor) {
+  document.getElementById('score-val').textContent = pad(state.score);
+  document.getElementById('hi-val').textContent = pad(state.hiScore);
+  const pct = Math.min(100, ((state.speed - 0.13) / (0.46 - 0.13)) * 100);
+  document.getElementById('speed-bar-fill').style.width = pct + '%';
+
+  const biomeBadge = document.getElementById('biome-badge');
+  const biomeIcon = document.getElementById('biome-icon');
+  const biomeName = document.getElementById('biome-name');
+  const scorePill = document.getElementById('score-pill');
+  const statusPill = document.getElementById('status-pill');
+
+  if (snowFactor >= 0.7) {
+    biomeIcon.textContent = '❄️';
+    biomeName.textContent = 'Era Glacial';
+    biomeBadge.classList.add('frozen');
+    scorePill.classList.add('frozen');
+    statusPill.classList.add('frozen');
+  } else if (snowFactor >= 0.25) {
+    biomeIcon.textContent = '🍂';
+    biomeName.textContent = 'Tiempo Helado';
+    biomeBadge.classList.add('frozen');
+    scorePill.classList.add('frozen');
+    statusPill.classList.add('frozen');
+  } else {
+    biomeIcon.textContent = '🌿';
+    biomeName.textContent = 'Selva Cálida';
+    biomeBadge.classList.remove('frozen');
+    scorePill.classList.remove('frozen');
+    statusPill.classList.remove('frozen');
+  }
+}
+
+function updateLivesUI() {
+  for (let i = 1; i <= 3; i++) {
+    const el = document.getElementById('h' + i);
+    if (i <= state.lives) el.classList.remove('empty');
+    else el.classList.add('empty');
+  }
+}
+
+function showMilestone(t) {
+  AudioFX.milestone();
+  const e = document.getElementById('milestone-popup');
+  e.textContent = t; e.style.opacity = 1;
+  e.style.transform = 'translateX(-50%) translateY(-6px)';
+  setTimeout(() => {
+    e.style.opacity = 0;
+    e.style.transform = 'translateX(-50%) translateY(0)';
+  }, 2400);
+}
+
+// ─── GAME CONTROLS ──────────────────────────────────────────────────────
+function startGame() {
+  AudioFX.init();
+  document.getElementById('start-screen').classList.add('hidden');
+  resetGame();
+  state.running = true;
+}
+function restartGame() {
+  AudioFX.init();
+  document.getElementById('gameover-screen').classList.add('hidden');
+  resetGame();
+  state.running = true;
+}
+function resetGame() {
+  state.score = 0; state.lives = 3; state.speed = 0.13;
+  state.time = 0; state.nextObstacle = 85;
+  state.milestones = [100, 300, 600, 1000, 2000, 5000];
+  state.snowEntered = false;
+  obstacles.forEach(o => { o.visible = false; o.userData.active = false; });
+  obstacles.length = 0;
+  player.y = 0; player.vy = 0; player.isJumping = false; player.jumpCount = 0;
+  player.isDucking = false; player.invincible = false;
+  player.group.visible = true;
+  player.group.position.y = 0;
+  updateTrackTexture(0);
+  document.getElementById('frost-overlay').style.opacity = 0;
+  updateLivesUI(); updateScoreUI(0);
+}
+function gameOver() {
+  state.running = false;
+  saveHiScore(~~state.hiScore);
+  document.getElementById('final-score-display').textContent = pad(state.score);
+  const isNew = state.score >= state.hiScore;
+  document.getElementById('final-hi-display').textContent = isNew ? '🏆 ¡NUEVO RÉCORD HISTÓRICO!' : 'Récord Anterior: ' + pad(state.hiScore);
+  spawnParticles(new THREE.Vector3(0, 1.5, 0), 0xf43f5e, 25);
+  document.getElementById('gameover-screen').classList.remove('hidden');
+}
+
+// ─── MAIN ANIMATION & GAME LOOP ─────────────────────────────────────────
+function gameLoop() {
+  requestAnimationFrame(gameLoop);
+
+  const t = state.time;
+
+  const snowFactor = Math.min(1, Math.max(0, (state.score - 150) / 500));
+
+  // 1. DRAW PAINTED 2D BACKGROUND
+  draw2DBackground(t, state.running ? state.speed : 0.05, snowFactor);
+
+  if (!state.running) {
+    const idleT = Date.now() * 0.003;
+    player.tailSegments.forEach((seg, i) => {
+      seg.rotation.y = Math.sin(idleT + i * 0.4) * 0.12;
+    });
+    player.headGroup.rotation.y = Math.sin(idleT * 0.6) * 0.08;
+    renderer.render(scene, camera);
+    return;
+  }
+
+  state.time++;
+  state.dayTime += 0.0003;
+  state.score += state.speed * 2;
+  if (state.score > state.hiScore) state.hiScore = state.score;
+  state.speed = Math.min(state.speedMax, state.speed + state.speedIncrement);
+
+  if (snowFactor > 0.35 && !state.snowEntered) {
+    state.snowEntered = true;
+    AudioFX.snowBell();
+    showMilestone('❄️ ¡BIOMA DE NIEVE! ERA GLACIAL');
+  }
+
+  if (state.time % 20 === 0) {
+    updateTrackTexture(snowFactor);
+    document.getElementById('frost-overlay').style.opacity = snowFactor * 0.65;
+  }
+
+  if (state.milestones.length && state.score >= state.milestones[0]) {
+    const ms = state.milestones.shift();
+    showMilestone('✨ ¡' + ~~ms + ' PUNTOS!');
+  }
+
+  if (player.invincible) {
+    player.invincibleTimer--;
+    player.group.visible = ~~(player.invincibleTimer / 6) % 2 === 0;
+    if (player.invincibleTimer <= 0) {
+      player.invincible = false;
+      player.group.visible = true;
+    }
+  }
+
+  // 2. JUMP PHYSICS
+  if (player.isJumping || player.y > 0) {
+    player.vy -= GRAVITY;
+    player.y += player.vy;
+    if (player.y <= 0) {
+      player.y = 0; player.vy = 0;
+      player.isJumping = false; player.jumpCount = 0;
+      spawnParticles(new THREE.Vector3(0.2, 0, LANE_Z), snowFactor > 0.4 ? 0xf0fdfa : 0x8a7158, 5);
+    }
+  }
+  player.group.position.y = player.y;
+
+  // 3. DRAGON BREATH FROST VAPOR
+  if (snowFactor > 0.25 && state.time % 32 === 0) {
+    const snoutWorldPos = new THREE.Vector3(1.2, player.y + 1.6, LANE_Z);
+    spawnParticles(snoutWorldPos, 0xf0f9ff, 3, true);
+  }
+
+  // 4. FLUID ORGANIC DRAGON RUNNING & TAIL ANIMATIONS
+  const runCycle = t * state.speed * 8;
+  const legSw1 = Math.sin(runCycle);
+  const legSw2 = Math.sin(runCycle + Math.PI);
+
+  player.blinkTimer++;
+  if (player.blinkTimer > 200 + Math.random() * 100) {
+    player.isBlinking = true;
+    player.blinkProgress = 0;
+    player.blinkTimer = 0;
+  }
+  if (player.isBlinking) {
+    player.blinkProgress += 0.18;
+    const blinkAmount = Math.sin(player.blinkProgress * Math.PI);
+    player.eyelidL.scale.y = Math.max(0.001, blinkAmount);
+    player.eyelidR.scale.y = Math.max(0.001, blinkAmount);
+    if (player.blinkProgress >= 1) {
+      player.isBlinking = false;
+      player.eyelidL.scale.y = 0.001;
+      player.eyelidR.scale.y = 0.001;
+    }
+  }
+
+  if (player.isJumping) {
+    player.hipL.rotation.x = 0.7; player.kneeL.rotation.x = -0.6;
+    player.hipR.rotation.x = 0.7; player.kneeR.rotation.x = -0.6;
+    player.armL.rotation.z = -0.5; player.armR.rotation.z = 0.5;
+    player.tailSegments[0].rotation.z = 0.35;
+  } else {
+    player.hipL.rotation.x = legSw1 * 0.65;
+    player.kneeL.rotation.x = Math.max(0, legSw1) * 0.55;
+    player.footL.rotation.x = -Math.max(0, legSw1) * 0.35;
+
+    player.hipR.rotation.x = legSw2 * 0.65;
+    player.kneeR.rotation.x = Math.max(0, legSw2) * 0.55;
+    player.footR.rotation.x = -Math.max(0, legSw2) * 0.35;
+
+    player.armL.rotation.x = legSw2 * 0.25;
+    player.armR.rotation.x = legSw1 * 0.25;
+
+    player.tailSegments.forEach((seg, i) => {
+      seg.rotation.y = Math.sin(runCycle * 0.5 - i * 0.42) * 0.20;
+      seg.rotation.z = Math.sin(runCycle) * 0.04;
+    });
+  }
+
+  player.headGroup.rotation.y = Math.sin(t * 0.06) * 0.05;
+  if (!player.isDucking) {
+    player.headGroup.position.y = 0.50 + Math.sin(runCycle * 2) * 0.04;
+  }
+
+  // 5. UPDATE 3D SNOW PARTICLES
+  snowMat.opacity = snowFactor * 0.88;
+  if (snowFactor > 0.02) {
+    const posAttr = snowGeo.attributes.position;
+    for (let i = 0; i < SNOW_COUNT; i++) {
+      const v = snowVelocities[i];
+      v.sway += v.swaySpeed;
+      posAttr.array[i * 3]     += v.vx * (1 + state.speed * 2.5);
+      posAttr.array[i * 3 + 1] -= v.vy;
+      posAttr.array[i * 3 + 2] += Math.sin(v.sway) * 0.03;
+
+      if (posAttr.array[i * 3 + 1] < 0 || posAttr.array[i * 3] < -15) {
+        posAttr.array[i * 3 + 1] = 18 + Math.random() * 4;
+        posAttr.array[i * 3]     = 25 + Math.random() * 30;
+      }
+    }
+    posAttr.needsUpdate = true;
+  }
+
+  // 6. OBSTACLES MANAGEMENT & VOLUMETRIC PTERODACTYL NATURAL FLIGHT
+  state.nextObstacle--;
+  if (state.nextObstacle <= 0) {
+    spawnObstacle();
+    state.nextObstacle = Math.max(48, 88 - state.score * 0.012) + Math.random() * 45;
+  }
+
+  for (let i = obstacles.length - 1; i >= 0; i--) {
+    const obs = obstacles[i];
+    obs.position.x -= state.speed;
+
+    if (obs.userData.isFlying) {
+      obs.position.y = obs.userData.flyHeight + Math.sin(t * 0.09) * 0.35;
+
+      const wingCycle = t * 0.22;
+      const shoulderFlap = Math.sin(wingCycle) * 0.60;
+      const elbowWave = Math.sin(wingCycle - 0.65) * 0.42;
+
+      if (obs.userData.wingL && obs.userData.wingR) {
+        obs.userData.wingL.shoulder.rotation.x = shoulderFlap;
+        obs.userData.wingL.shoulder.rotation.y = Math.cos(wingCycle) * 0.15;
+        obs.userData.wingR.shoulder.rotation.x = -shoulderFlap;
+        obs.userData.wingR.shoulder.rotation.y = -Math.cos(wingCycle) * 0.15;
+
+        obs.userData.wingL.elbow.rotation.x = elbowWave;
+        obs.userData.wingR.elbow.rotation.x = -elbowWave;
+
+        obs.userData.wingL.outerMem.rotation.y = Math.sin(wingCycle - 0.8) * 0.2;
+        obs.userData.wingR.outerMem.rotation.y = -Math.sin(wingCycle - 0.8) * 0.2;
+      }
+    }
+
+    if (obs.userData.snowCap) obs.userData.snowCap.visible = snowFactor > 0.25;
+    if (obs.userData.snowTop) obs.userData.snowTop.visible = snowFactor > 0.25;
+    if (obs.userData.crystal) {
+      if (snowFactor > 0.4) {
+        obs.userData.crystal.material.color.setHex(0x38bdf8);
+        obs.userData.crystal.material.emissive.setHex(0x0284c7);
+      } else {
+        obs.userData.crystal.material.color.setHex(0xf59e0b);
+        obs.userData.crystal.material.emissive.setHex(0xb45309);
+      }
+    }
+
+    if (obs.position.x < -14) {
+      obs.visible = false; obs.userData.active = false;
+      obstacles.splice(i, 1);
+    }
+  }
+
+  // 7. 3D GROUND SCROLLING
+  groundGroup.position.x -= state.speed;
+  if (groundGroup.position.x < -80) groundGroup.position.x += 80;
+
+  // 8. COLLISIONS & RENDER
+  checkCollision();
+  updateScoreUI(snowFactor);
+  updateParticles();
+  renderer.render(scene, camera);
+}
+
+// Start loop
+requestAnimationFrame(gameLoop);
+
+// Auto-start or preview support for checking
+const params = new URLSearchParams(window.location.search);
+if (params.get('autostart')) {
+  startGame();
+  if (params.get('score')) state.score = parseInt(params.get('score'));
+  if (params.get('invincible')) player.invincible = true;
+  if (params.get('ptero')) {
+    let obs = POOL.find(o => !o.userData.active && o.userData.type === 'pterodactyl');
+    if (!obs) { obs = createObsMesh('pterodactyl'); POOL.push(obs); }
+    obs.visible = true;
+    obs.userData.active = true;
+    obs.position.set(6.8, 1.85, LANE_Z);
+    obs.userData.flyHeight = 1.85;
+    obstacles.push(obs);
+  }
+}
+</script>
+</body>
+</html>
